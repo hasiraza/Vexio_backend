@@ -3,52 +3,93 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const { extractTextFromPDF, analyzeComplianceText } = require('../services/pdfService');
-const Document = require('../models/Document');
 
-// Ensure uploads directory exists
-const uploadsDir = path.join(__dirname, '../uploads');
-if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+const dbConnect = require('../db/connect'); // 🔥 IMPORTANT
+
+const {
+  extractTextFromPDF,
+  analyzeComplianceText,
+} = require('../services/pdfService');
+
+const Document = require('../models/Document');
+const Requirement = require('../models/Requirement');
+const Issue = require('../models/Issue');
+const Risk = require('../models/Risk');
+
+/* ---------------- DB SAFETY MIDDLEWARE ---------------- */
+router.use(async (req, res, next) => {
+  try {
+    await dbConnect();
+    next();
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/* ---------------- UPLOAD CONFIG ---------------- */
+const uploadsDir = '/tmp/uploads'; // 🔥 VERCEL SAFE PATH
+
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadsDir),
   filename: (req, file, cb) => {
-    const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    const unique =
+      Date.now() + '-' + Math.round(Math.random() * 1e9);
     cb(null, unique + path.extname(file.originalname));
-  }
+  },
 });
 
 const upload = multer({
   storage,
   limits: { fileSize: 50 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    const allowed = ['.pdf', '.png', '.jpg', '.jpeg', '.tiff'];
-    const ext = path.extname(file.originalname).toLowerCase();
+    const allowed = [
+      '.pdf',
+      '.png',
+      '.jpg',
+      '.jpeg',
+      '.tiff',
+    ];
+
+    const ext = path
+      .extname(file.originalname)
+      .toLowerCase();
+
     if (allowed.includes(ext)) cb(null, true);
-    else cb(new Error('Only PDF and image files are allowed'));
-  }
+    else cb(new Error('Only PDF and image files allowed'));
+  },
 });
 
-// Upload and analyze PDF
+/* =========================================================
+   UPLOAD & ANALYZE PDF
+========================================================= */
 router.post('/upload', upload.single('pdf'), async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    if (!req.file)
+      return res.status(400).json({ error: 'No file uploaded' });
 
     const filePath = req.file.path;
-    const { text, pages, method } = await extractTextFromPDF(filePath);
-    
+
+    const { text, pages, method } =
+      await extractTextFromPDF(filePath);
+
     if (!text || text.trim().length < 10) {
-      return res.status(422).json({ error: 'Could not extract sufficient text from document' });
+      return res.status(422).json({
+        error: 'Could not extract text',
+      });
     }
 
     const analysis = analyzeComplianceText(text);
 
-    // Save document record
     const doc = new Document({
-      title: analysis.documentTitle || req.file.originalname,
+      title:
+        analysis.documentTitle || req.file.originalname,
       type: 'Evidence',
       status: 'Current',
-      filePath: filePath,
+      filePath,
       fileName: req.file.originalname,
       fileSize: req.file.size,
       mimeType: req.file.mimetype,
@@ -57,6 +98,7 @@ router.post('/upload', upload.single('pdf'), async (req, res) => {
       complianceScore: analysis.summary.complianceScore,
       notes: `Analyzed via ${method}. Pages: ${pages}`,
     });
+
     await doc.save();
 
     res.json({
@@ -75,43 +117,84 @@ router.post('/upload', upload.single('pdf'), async (req, res) => {
   }
 });
 
-// Save extracted data to modules
+/* =========================================================
+   SAVE ANALYSIS
+========================================================= */
 router.post('/save-analysis', async (req, res) => {
   try {
-    const { documentId, mappings } = req.body;
-    const results = { created: [], errors: [] };
+    await dbConnect(); // 🔥 IMPORTANT
 
-    const Requirement = require('../models/Requirement');
-    const Issue = require('../models/Issue');
-    const Risk = require('../models/Risk');
+    const { mappings } = req.body;
 
+    const results = {
+      created: [],
+      errors: [],
+    };
+
+    /* ---------------- REQUIREMENTS ---------------- */
     if (mappings.requirements) {
       for (const req_data of mappings.requirements) {
         try {
-          const code = `REQ-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-          const item = new Requirement({ ...req_data, code, source: 'PDF Upload' });
+          const code = `REQ-${Date.now()}-${Math.floor(
+            Math.random() * 1000
+          )}`;
+
+          const item = new Requirement({
+            ...req_data,
+            code,
+            source: 'PDF Upload',
+          });
+
           await item.save();
-          results.created.push({ type: 'requirement', id: item._id, title: item.title });
+
+          results.created.push({
+            type: 'requirement',
+            id: item._id,
+            title: item.title,
+          });
         } catch (e) {
-          results.errors.push({ type: 'requirement', error: e.message });
+          results.errors.push({
+            type: 'requirement',
+            error: e.message,
+          });
         }
       }
     }
 
+    /* ---------------- ISSUES ---------------- */
     if (mappings.issues) {
       for (const issue_data of mappings.issues) {
         try {
-          const code = `ISS-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-          const item = new Issue({ ...issue_data, code, source: 'PDF Analysis' });
+          const code = `ISS-${Date.now()}-${Math.floor(
+            Math.random() * 1000
+          )}`;
+
+          const item = new Issue({
+            ...issue_data,
+            code,
+            source: 'PDF Analysis',
+          });
+
           await item.save();
-          results.created.push({ type: 'issue', id: item._id, title: item.title });
+
+          results.created.push({
+            type: 'issue',
+            id: item._id,
+            title: item.title,
+          });
         } catch (e) {
-          results.errors.push({ type: 'issue', error: e.message });
+          results.errors.push({
+            type: 'issue',
+            error: e.message,
+          });
         }
       }
     }
 
-    res.json({ success: true, results });
+    res.json({
+      success: true,
+      results,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

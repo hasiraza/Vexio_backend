@@ -1,9 +1,23 @@
 const express = require('express');
 const router = express.Router();
+
 const Control = require('../models/Control');
 const createController = require('../controllers/crudController');
+const dbConnect = require('../db/connect'); // 🔥 IMPORTANT
 
 const ctrl = createController(Control, ['requirement']);
+
+/* ------------------ DB MIDDLEWARE ------------------ */
+router.use(async (req, res, next) => {
+  try {
+    await dbConnect(); // ensures MongoDB is ready
+    next();
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* ------------------ ROUTES ------------------ */
 router.get('/', ctrl.getAll);
 router.get('/:id', ctrl.getOne);
 router.post('/', ctrl.create);
