@@ -8,78 +8,102 @@ dotenv.config();
 
 const app = express();
 
-/* ---------------- SAFE CORS (PRODUCTION) ---------------- */
-const allowedOrigins = [
-  'http://localhost:3000',
-  'https://vexio-frontend.vercel.app',
-];
+// Environment Variables
+const FRONTEND_URL =
+  process.env.FRONTEND_URL ||
+  'http://localhost:3000';
 
+// Middleware
 app.use(
   cors({
-    origin: function (origin, callback) {
-      if (!origin) return callback(null, true);
-
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-
-      return callback(null, false);
-    },
+    origin: FRONTEND_URL,
     credentials: true,
   })
 );
 
-/* ---------------- BODY PARSERS ---------------- */
 app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-/* ---------------- STATIC FILES ---------------- */
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use(
+  express.urlencoded({
+    extended: true,
+    limit: '50mb',
+  })
+);
 
-/* ---------------- HEALTH ---------------- */
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', app: 'Vexio' });
+// Static Uploads
+app.use(
+  '/uploads',
+  express.static(path.join(__dirname, 'uploads'))
+);
+
+// ROOT ROUTE
+app.get('/', (req, res) => {
+  res.json({
+    message: 'Vexio Backend API Running',
+  });
 });
 
-/* ---------------- ROUTES ---------------- */
-app.use('/api/requirements', require('./routes/requirements'));
-app.use('/api/controls', require('./routes/controls'));
-app.use('/api/risks', require('./routes/risks'));
-app.use('/api/documents', require('./routes/documents'));
-app.use('/api/reviews', require('./routes/reviews'));
-app.use('/api/issues', require('./routes/issues'));
-app.use('/api/pdf', require('./routes/pdf'));
-app.use('/api/dashboard', require('./routes/dashboard'));
+// Routes
+app.use(
+  '/api/requirements',
+  require('./routes/requirements')
+);
 
-/* ---------------- MONGODB (FIXED FOR VERCEL) ---------------- */
-const MONGODB_URI = process.env.MONGODB_URI;
+app.use(
+  '/api/controls',
+  require('./routes/controls')
+);
 
-if (!MONGODB_URI) {
-  throw new Error('MONGODB_URI missing in env');
-}
+app.use(
+  '/api/risks',
+  require('./routes/risks')
+);
 
-let cached = global.mongoose;
+app.use(
+  '/api/documents',
+  require('./routes/documents')
+);
 
-if (!cached) {
-  cached = global.mongoose = { conn: null, promise: null };
-}
+app.use(
+  '/api/reviews',
+  require('./routes/reviews')
+);
 
-async function connectDB() {
-  if (cached.conn) return cached.conn;
+app.use(
+  '/api/issues',
+  require('./routes/issues')
+);
 
-  if (!cached.promise) {
-    cached.promise = mongoose.connect(MONGODB_URI, {
-      bufferCommands: false,
-    });
-  }
+app.use(
+  '/api/pdf',
+  require('./routes/pdf')
+);
 
-  cached.conn = await cached.promise;
-  return cached.conn;
-}
+app.use(
+  '/api/dashboard',
+  require('./routes/dashboard')
+);
 
-connectDB()
-  .then(() => console.log('✅ MongoDB Connected'))
-  .catch((err) => console.error('❌ Mongo Error', err));
+// Health Check
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'OK',
+    app: 'Vexio',
+  });
+});
 
-/* ---------------- EXPORT (VERCEL) ---------------- */
+// MongoDB Connection
+mongoose
+  .connect(process.env.MONGODB_URI)
+  .then(() => {
+    console.log('✅ Connected to MongoDB');
+  })
+  .catch((err) => {
+    console.error(
+      '❌ MongoDB connection error:',
+      err
+    );
+  });
+
+// IMPORTANT FOR VERCEL
 module.exports = app;
