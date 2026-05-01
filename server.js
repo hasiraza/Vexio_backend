@@ -8,44 +8,95 @@ dotenv.config();
 
 const app = express();
 
-// Middleware
-app.use(cors());
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Environment Variables
+const FRONTEND_URL =
+  process.env.FRONTEND_URL ||
+  'http://localhost:3000';
 
-// Serve the self-contained frontend
-app.use(express.static(path.join(__dirname, '../frontend/public')));
+// Middleware
+app.use(
+  cors({
+    origin: FRONTEND_URL,
+    credentials: true,
+  })
+);
+
+app.use(express.json({ limit: '50mb' }));
+
+app.use(
+  express.urlencoded({
+    extended: true,
+    limit: '50mb',
+  })
+);
+
+// Static Uploads
+app.use(
+  '/uploads',
+  express.static(path.join(__dirname, 'uploads'))
+);
 
 // Routes
-app.use('/api/requirements', require('./routes/requirements'));
-app.use('/api/controls', require('./routes/controls'));
-app.use('/api/risks', require('./routes/risks'));
-app.use('/api/documents', require('./routes/documents'));
-app.use('/api/reviews', require('./routes/reviews'));
-app.use('/api/issues', require('./routes/issues'));
-app.use('/api/pdf', require('./routes/pdf'));
-app.use('/api/dashboard', require('./routes/dashboard'));
+app.use(
+  '/api/requirements',
+  require('./routes/requirements')
+);
 
-// Health check
-app.get('/api/health', (req, res) => res.json({ status: 'OK', app: 'Vexio' }));
+app.use(
+  '/api/controls',
+  require('./routes/controls')
+);
 
-// SPA fallback
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/public/index.html'));
+app.use(
+  '/api/risks',
+  require('./routes/risks')
+);
+
+app.use(
+  '/api/documents',
+  require('./routes/documents')
+);
+
+app.use(
+  '/api/reviews',
+  require('./routes/reviews')
+);
+
+app.use(
+  '/api/issues',
+  require('./routes/issues')
+);
+
+app.use(
+  '/api/pdf',
+  require('./routes/pdf')
+);
+
+app.use(
+  '/api/dashboard',
+  require('./routes/dashboard')
+);
+
+// Health Check
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'OK',
+    app: 'Vexio',
+  });
 });
 
-// Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI)
+// MongoDB Connection
+mongoose
+  .connect(process.env.MONGODB_URI)
   .then(() => {
     console.log('✅ Connected to MongoDB');
-    app.listen(process.env.PORT || 5000, () => {
-      console.log(`🚀 Vexio API running on port ${process.env.PORT || 5000}`);
-    });
   })
-  .catch(err => {
-    console.error('❌ MongoDB connection error:', err);
-    process.exit(1);
+  .catch((err) => {
+    console.error(
+      '❌ MongoDB connection error:',
+      err
+    );
   });
 
+// IMPORTANT FOR VERCEL
 module.exports = app;
