@@ -36,6 +36,13 @@ app.use(
   express.static(path.join(__dirname, 'uploads'))
 );
 
+// ROOT ROUTE
+app.get('/', (req, res) => {
+  res.json({
+    message: 'Vexio Backend API Running',
+  });
+});
+
 // Routes
 app.use(
   '/api/requirements',
